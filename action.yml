@@ -1,0 +1,125 @@
+name: 'CRA Kit scan'
+description: 'CycloneDX SBOM + OSV vulnerabilities + CISA KEV check for the EU Cyber Resilience Act (Article 14 clock). No account, no telemetry.'
+author: 'Louann Duclos'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  fail-on-kev:
+    description: 'Fail the job when a dependency vulnerability is on the CISA Known Exploited Vulnerabilities list (the Article 14 trigger).'
+    required: false
+    default: 'true'
+  fail-on:
+    description: 'Also fail when any vulnerability is at or above this severity: low, moderate, high, critical. Empty = no severity gate.'
+    required: false
+    default: ''
+  lang:
+    description: 'Report language: en or fr.'
+    required: false
+    default: 'en'
+  working-directory:
+    description: 'Directory holding the lockfile(s). One directory level is scanned; run the action once per package in a monorepo.'
+    required: false
+    default: '.'
+  no-dev:
+    description: 'Exclude dev dependencies from the SBOM.'
+    required: false
+    default: 'false'
+  product-name:
+    description: 'Product name written in the SBOM metadata.'
+    required: false
+    default: ''
+  product-version:
+    description: 'Product version written in the SBOM metadata.'
+    required: false
+    default: ''
+  cli-version:
+    description: 'crakit-cli version to run (npm). Pin it for reproducible builds.'
+    required: false
+    default: 'latest'
+  upload-artifacts:
+    description: 'Upload sbom.cdx.json and crakit-report.json as workflow artifacts.'
+    required: false
+    default: 'true'
+
+outputs:
+  kev-count:
+    description: 'Number of dependency vulnerabilities found on the CISA KEV list.'
+    value: ${{ steps.scan.outputs.kev-count }}
+  vuln-count:
+    description: 'Number of known vulnerabilities found (OSV.dev).'
+    value: ${{ steps.scan.outputs.vuln-count }}
+  sbom:
+    description: 'Path of the generated CycloneDX SBOM.'
+    value: ${{ steps.scan.outputs.sbom }}
+  exit-code:
+    description: 'crakit exit code: 0 ok, 2 KEV hit, 3 severity threshold hit.'
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run crakit
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FAIL_ON_KEV: ${{ inputs.fail-on-kev }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        LANG_OPT: ${{ inputs.lang }}
+        NO_DEV: ${{ inputs.no-dev }}
+        PRODUCT_NAME: ${{ inputs.product-name }}
+        PRODUCT_VERSION: ${{ inputs.product-version }}
+        CLI_VERSION: ${{ inputs.cli-version }}
+      run: |
+        set +e
+        args=(--json crakit-report.json --lang "$LANG_OPT")
+        [ "$FAIL_ON_KEV" = "true" ] && args+=(--fail-on-kev)
+        [ -n "$FAIL_ON" ] && args+=(--fail-on "$FAIL_ON")
+        [ "$NO_DEV" = "true" ] && args+=(--no-dev)
+        [ -n "$PRODUCT_NAME" ] && args+=(--name "$PRODUCT_NAME")
+        [ -n "$PRODUCT_VERSION" ] && args+=(--product-version "$PRODUCT_VERSION")
+        npx --yes "crakit-cli@$CLI_VERSION" "${args[@]}" | tee crakit-output.txt
+        code=${PIPESTATUS[0]}
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "sbom=$PWD/sbom.cdx.json" >> "$GITHUB_OUTPUT"
+        kev=0; vulns=0
+        if [ -f crakit-report.json ]; then
+          kev=$(node -e 'const r=require("./crakit-report.json");console.log((r.exploited||[]).length)' 2>/dev/null || echo 0)
+          vulns=$(node -e 'const r=require("./crakit-report.json");console.log((r.vulnerabilities||r.vulns||[]).length)' 2>/dev/null || echo 0)
+        fi
+        echo "kev-count=$kev" >> "$GITHUB_OUTPUT"
+        echo "vuln-count=$vulns" >> "$GITHUB_OUTPUT"
+        {
+          echo "## CRA Kit scan"
+          echo
+          if [ "$kev" != "0" ]; then
+            echo "**$kev dependency vulnerabilit$( [ "$kev" = "1" ] && echo y || echo ies) on the CISA KEV list.** If this component ships in a product you sell in the EU, Article 14 of the Cyber Resilience Act starts a 24 h early-warning clock from the moment you know."
+          else
+            echo "No dependency vulnerability on the CISA KEV list (known active exploitation)."
+          fi
+          echo
+          echo '```'
+          head -c 6000 crakit-output.txt
+          echo '```'
+          echo
+          echo "SBOM: \`sbom.cdx.json\` (CycloneDX 1.5). Report: \`crakit-report.json\`. Free scope test and the 13 CRA documents: https://crakit.eu"
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit $code
+
+    - name: Upload SBOM and report
+      if: ${{ always() && inputs.upload-artifacts == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: crakit-${{ github.run_id }}
+        path: |
+          ${{ inputs.working-directory }}/sbom.cdx.json
+          ${{ inputs.working-directory }}/crakit-report.json
+        if-no-files-found: ignore

@@ -1,0 +1,27 @@
+name: self-test
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 6 * * 1'   # every Monday: the KEV list moves, the action must still run
+jobs:
+  scan-a-sample-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make a small project with one old dependency
+        run: |
+          mkdir -p sample && cd sample
+          npm init -y >/dev/null
+          npm install lodash@4.17.20 --package-lock-only --ignore-scripts >/dev/null 2>&1 || true
+      - name: Run the action on it (never fail the self-test on findings)
+        id: run
+        uses: ./
+        with:
+          working-directory: sample
+          fail-on-kev: 'false'
+          upload-artifacts: 'false'
+      - name: Show outputs
+        run: |
+          echo "exit-code=${{ steps.run.outputs.exit-code }} kev=${{ steps.run.outputs.kev-count }} vulns=${{ steps.run.outputs.vuln-count }}"
+          test -f sample/sbom.cdx.json
