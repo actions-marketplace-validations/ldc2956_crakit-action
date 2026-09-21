@@ -1,5 +1,5 @@
 name: 'CRA Kit scan'
-description: 'CycloneDX SBOM + OSV vulnerabilities + CISA KEV check for the EU Cyber Resilience Act (Article 14 clock). No account, no telemetry.'
+description: 'CycloneDX SBOM + OSV + CISA KEV check in CI, with the EU Cyber Resilience Act Article 14 clock. No account, no telemetry.'
 author: 'Louann Duclos'
 branding:
   icon: 'shield'
