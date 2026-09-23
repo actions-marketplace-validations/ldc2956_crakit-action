@@ -102,15 +102,24 @@ runs:
           echo
           if [ "$kev" != "0" ]; then
             echo "**$kev dependency vulnerabilit$( [ "$kev" = "1" ] && echo y || echo ies) on the CISA KEV list.** If this component ships in a product you sell in the EU, Article 14 of the Cyber Resilience Act starts a 24 h early-warning clock from the moment you know."
+            echo
+            echo "A KEV entry is not automatically reportable. First check whether your product actually exposes the vulnerable code path. If it does, the clock is running."
+            echo
+            echo "What to do today, in order:"
+            echo "1. Are you a manufacturer under the Regulation? Two minutes, free: https://crakit.eu/scope/"
+            echo "2. Write down who receives the alert, who decides, and where the notification goes. One page, free: https://crakit.eu/blog/write-your-24-hour-reporting-procedure-on-one-page/"
+            echo "3. Keep the log entry: the time you became aware, in UTC."
           else
             echo "No dependency vulnerability on the CISA KEV list (known active exploitation)."
+            echo
+            echo "The KEV catalogue changes most days, and a dependency that is clean this morning can be listed tonight without a single commit on your side. Add \`schedule:\` to this workflow so the clock never starts without you knowing."
           fi
           echo
           echo '```'
           head -c 6000 crakit-output.txt
           echo '```'
           echo
-          echo "SBOM: \`sbom.cdx.json\` (CycloneDX 1.5). Report: \`crakit-report.json\`. Free scope test and the 13 CRA documents: https://crakit.eu"
+          echo "SBOM: \`sbom.cdx.json\` (CycloneDX 1.5). Report: \`crakit-report.json\`. Built by an independent developer, MIT, no account and no telemetry: https://crakit.eu"
         } >> "$GITHUB_STEP_SUMMARY"
         exit $code
 
